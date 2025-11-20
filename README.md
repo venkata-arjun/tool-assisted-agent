@@ -1,4 +1,4 @@
-````markdown
+
 # LangGraph Chat Agent API
 
 A chat agent built with FastAPI and LangGraph. It supports academic assistance, emotional understanding, safety protocols, and conversation memory across threads.
@@ -25,7 +25,7 @@ A chat agent built with FastAPI and LangGraph. It supports academic assistance, 
 git clone <your-repo-url>
 cd langgraph-chat-api
 ```
-````
+
 
 ### 2. Install dependencies
 
@@ -64,4 +64,3 @@ Once running:
 - Swagger UI: `http://localhost:8000/docs`
 - Health check: `http://localhost:8000/health`
 
----
