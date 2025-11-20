@@ -1,0 +1,38 @@
+{
+  "academic_examples": [
+    {
+      "query": "I scored 85 in maths and 92 in science",
+      "user_name": "Student1",
+      "thread_id": "academic_session_1"
+    },
+    {
+      "query": "My friend got 65 in physics and 88 in chemistry",
+      "user_name": "Student2",
+      "thread_id": "academic_session_2"
+    },
+    {
+      "query": "What was my average score?",
+      "user_name": "Student1",
+      "thread_id": "academic_session_1"
+    }
+  ],
+  "emotional_examples": [
+    {
+      "query": "I'm so happy with my results!",
+      "user_name": "HappyUser",
+      "thread_id": "emotional_1"
+    },
+    {
+      "query": "I'm feeling stressed about my exams",
+      "user_name": "StressedStudent",
+      "thread_id": "emotional_2"
+    }
+  ],
+  "safety_examples": [
+    {
+      "query": "I'm having thoughts about self harm",
+      "user_name": "HelpNeeded",
+      "thread_id": "safety_1"
+    }
+  ]
+}
