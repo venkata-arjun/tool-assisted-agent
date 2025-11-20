@@ -2,8 +2,11 @@
 
 # --- 0. PACKAGE IMPORTS & SETUP ---
 
+# Framework and request validation imports
 from fastapi import FastAPI
 from pydantic import BaseModel
+
+# System-level utility imports for environment, regex, and typing
 import os
 import re
 from typing import List, Dict, Any, Annotated
@@ -11,7 +14,7 @@ import asyncio
 import uuid
 from datetime import datetime
 
-# LangChain & LangGraph Imports
+# LangChain and LangGraph components for conversational workflows
 from langchain_groq import ChatGroq
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import StateGraph, START, END
@@ -22,13 +25,13 @@ import operator
 
 # --- 1. CONFIGURATION & INITIALIZATION ---
 
-# Better API Key handling
+# Load API key securely from environment variables
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
     print("Warning: GROQ_API_KEY environment variable not set.")
     print("Please set it using: set GROQ_API_KEY=your_key_here")
 
-# LLM SETUP
+# Initialize the Groq LLM client for response generation
 try:
     llm = ChatGroq(
         model_name="llama-3.3-70b-versatile", temperature=0.2, api_key=GROQ_API_KEY
@@ -39,7 +42,7 @@ except Exception as e:
     llm = None
 
 
-# Define State
+# State format definition for LangGraph memory and message flow
 class ChatState(TypedDict):
     messages: Annotated[List[Any], operator.add]
     user_input: str
@@ -49,7 +52,7 @@ class ChatState(TypedDict):
 
 # --- 2. HELPER FUNCTIONS ---
 
-
+# Provides the most recent conversation slices for contextual prompting
 def get_recent_history(messages: List) -> str:
     """Returns the latest conversation as a simple text string for prompts"""
     try:
@@ -63,12 +66,13 @@ def get_recent_history(messages: List) -> str:
             elif isinstance(m, AIMessage):
                 lines.append(f"BOT: {m.content}")
 
-        return "\n".join(lines[-10:])  # Last 10 messages
+        return "\n".join(lines[-10:])
     except Exception as e:
         print(f"Error loading memory: {e}")
         return "No conversation history yet."
 
 
+# Converts numeric score to an academic grade according to Indian grading system
 def grade_from_score(score: float) -> str:
     """Convert numeric marks to letter grade (Indian-style)"""
     if score >= 90:
@@ -89,7 +93,7 @@ def grade_from_score(score: float) -> str:
 
 # --- 3. TOOL FUNCTIONS ---
 
-
+# Generates supportive responses for positive or neutral messages
 def positive_prompt_tool(state: ChatState) -> Dict[str, Any]:
     """Handle positive/constructive messages"""
     try:
@@ -104,22 +108,16 @@ Current message: {user_input}
 Reply briefly and encouragingly. Never repeat the user."""
 
         response = llm.invoke(prompt)
-        return {
-            "response": response.content,
-            "messages": [AIMessage(content=response.content)],
-        }
+        return {"response": response.content, "messages": [AIMessage(content=response.content)]}
     except Exception as e:
         print(f"Error in positive_prompt_tool: {e}")
         return {
             "response": "I'm having trouble responding right now. Please try again.",
-            "messages": [
-                AIMessage(
-                    content="I'm having trouble responding right now. Please try again."
-                )
-            ],
+            "messages": [AIMessage(content="I'm having trouble responding right now. Please try again.")]
         }
 
 
+# Provides empathetic guidance for negative or emotionally concerned messages
 def negative_prompt_tool(state: ChatState) -> Dict[str, Any]:
     """Handle complaints, worries, or negative messages"""
     try:
@@ -134,34 +132,26 @@ Current message: {user_input}
 Give short, helpful advice or empathy without repeating the user."""
 
         response = llm.invoke(prompt)
-        return {
-            "response": response.content,
-            "messages": [AIMessage(content=response.content)],
-        }
+        return {"response": response.content, "messages": [AIMessage(content=response.content)]}
     except Exception as e:
         print(f"Error in negative_prompt_tool: {e}")
         return {
             "response": "I'm having trouble responding right now. Please try again.",
-            "messages": [
-                AIMessage(
-                    content="I'm having trouble responding right now. Please try again."
-                )
-            ],
+            "messages": [AIMessage(content="I'm having trouble responding right now. Please try again.")]
         }
 
 
+# Delivers crisis-safe emergency guidance for self-harm related messages
 def self_harm_safety_tool(state: ChatState) -> Dict[str, Any]:
     """Handle self-harm related messages with emergency contacts"""
     safety_response = (
         "I can't help with self-harm. If you're in danger, please call emergency services immediately. "
         "In India → Aasra: +91 9820466726. Reach out to someone you trust right now."
     )
-    return {
-        "response": safety_response,
-        "messages": [AIMessage(content=safety_response)],
-    }
+    return {"response": safety_response, "messages": [AIMessage(content=safety_response)]}
 
 
+# Handles student academic queries involving marks, grades, and analysis
 def student_marks_tool(state: ChatState) -> Dict[str, Any]:
     """Handle academic queries about marks, grades, and averages"""
     try:
@@ -180,15 +170,12 @@ Tasks:
 • Extract & remember all marks/subjects mentioned (update if user corrects).
 • Handle follow-ups naturally ("what was the average?", "add 5 marks to Alice", "who passed?" etc.).
 • Use the grading system: A+ (90+), A (80-89), B (70-79), C (60-69), D (50-59), E (40-49), F (<40).
-• Always reply in short, natural English (example: "Alice: 92 → A+ | Bob: 78 → B | Average: 85.0").
+• Always reply in short, natural English.
 
-If nothing in memory yet and no marks found → politely ask for them.
+If no marks available → ask user for them.
 """
         response = llm.invoke(prompt)
-        return {
-            "response": response.content,
-            "messages": [AIMessage(content=response.content)],
-        }
+        return {"response": response.content, "messages": [AIMessage(content=response.content)]}
     except Exception as e:
         print(f"Error in student_marks_tool: {e}")
         error_msg = "I'm having trouble processing academic queries right now. Please try again."
@@ -197,150 +184,87 @@ If nothing in memory yet and no marks found → politely ask for them.
 
 # --- 4. LANGGRAPH WORKFLOW SETUP ---
 
-
+# Determines the appropriate tool for routing based on content analysis
 def router(state: ChatState) -> str:
     """Route the conversation to the appropriate tool"""
     user_input = state["user_input"].lower()
 
-    # 1. Safety block (instant response - highest priority)
+    # High-priority safety message detection
     safety_phrases = [
-        "end his life",
-        "end my life",
-        "kill myself",
-        "suicide",
-        "want to die",
-        "self harm",
-        "self-harm",
-        "harm myself",
-        "end it all",
-        "don't want to live",
+        "end his life", "end my life", "kill myself", "suicide", "want to die",
+        "self harm", "self-harm", "harm myself", "end it all", "don't want to live",
     ]
-
     if any(phrase in user_input for phrase in safety_phrases):
         return "safety"
 
-    # 2. Academic / marks keywords or numbers
+    # Identify academic-related queries including numeric scores
     academic_keywords = [
-        "score",
-        "mark",
-        "grade",
-        "average",
-        "total",
-        "biology",
-        "physics",
-        "maths",
-        "chemistry",
-        "science",
-        "english",
-        "history",
-        "geography",
-        "economics",
-        "accountancy",
-        "what was",
-        "how much",
-        "again",
-        "list",
-        "add ",
-        "got in",
-        "scored in",
-        "subject",
-        "exam",
-        "test",
-        "result",
-        "percentage",
-        "pass",
-        "fail",
-        "rank",
+        "score", "mark", "grade", "average", "total", "biology", "physics",
+        "maths", "chemistry", "science", "english", "history", "geography",
+        "economics", "accountancy", "what was", "how much", "again", "list",
+        "add ", "got in", "scored in", "subject", "exam", "test", "result",
+        "percentage", "pass", "fail", "rank",
     ]
-
-    if any(word in user_input for word in academic_keywords) or re.search(
-        r"\d", state["user_input"]
-    ):
+    if any(word in user_input for word in academic_keywords) or re.search(r"\d", state["user_input"]):
         return "academic"
 
-    # 3. Emotional messages
+    # Analyze emotional sentiment for conversational tone selection
     positive_words = [
-        "happy",
-        "amazing",
-        "great",
-        "beautiful",
-        "wow",
-        "love",
-        "excited",
-        "good",
-        "awesome",
-        "fantastic",
-        "wonderful",
-        "excellent",
-        "perfect",
+        "happy", "amazing", "great", "beautiful", "wow", "love", "excited",
+        "good", "awesome", "fantastic", "wonderful", "excellent", "perfect",
         "brilliant",
     ]
-
     negative_words = [
-        "sad",
-        "angry",
-        "upset",
-        "worried",
-        "anxious",
-        "stressed",
-        "frustrated",
-        "annoyed",
-        "depressed",
-        "tired",
-        "exhausted",
-        "bored",
-        "lonely",
-        "scared",
+        "sad", "angry", "upset", "worried", "anxious", "stressed", "frustrated",
+        "annoyed", "depressed", "tired", "exhausted", "bored", "lonely", "scared",
     ]
 
     if any(pos in user_input for pos in positive_words):
         return "positive"
     elif any(neg in user_input for neg in negative_words):
         return "negative"
-    else:
-        # Default to positive response for neutral messages
-        return "positive"
+    return "positive"
 
 
-# Create the workflow
+# Create the LangGraph workflow controller
 workflow = StateGraph(ChatState)
 
-# Define nodes
-workflow.add_node("router", lambda state: state)  # Just pass through for routing
+# Pass-through node for message routing
+workflow.add_node("router", lambda state: state)
+
+# Register tool handler nodes
 workflow.add_node("positive", positive_prompt_tool)
 workflow.add_node("negative", negative_prompt_tool)
 workflow.add_node("academic", student_marks_tool)
 workflow.add_node("safety", self_harm_safety_tool)
 
-# Define edges - FIXED: Use the router function directly in conditional edges
+# Link router decisions to appropriate handlers
 workflow.add_conditional_edges(
     "router",
-    router,  # Direct function reference
-    {
-        "positive": "positive",
-        "negative": "negative",
-        "academic": "academic",
-        "safety": "safety",
-    },
+    router,
+    {"positive": "positive", "negative": "negative", "academic": "academic", "safety": "safety"},
 )
 
+# Mark end-of-flow transitions
 workflow.add_edge("positive", END)
 workflow.add_edge("negative", END)
 workflow.add_edge("academic", END)
 workflow.add_edge("safety", END)
 
+# Specify router as the workflow starting point
 workflow.set_entry_point("router")
 
-# Create checkpointer (replaces memory)
+# Initialize in-memory conversation memory checkpoint storage
 checkpointer = InMemorySaver()
 
-# Compile the graph
+# Compile the executable workflow graph with persistence enabled
 graph = workflow.compile(checkpointer=checkpointer)
 print("LangGraph workflow initialized with memory checkpointer.")
 
 
 # --- 5. FASTAPI SETUP ---
 
+# Create FastAPI application for exposing chat and thread management features
 app = FastAPI(
     title="LangGraph Chat Agent API",
     description="A smart chat agent using LangGraph with conversation memory",
@@ -348,45 +272,41 @@ app = FastAPI(
 )
 
 
-# Pydantic Models for Request/Response
+# Model defining input structure for chatbot requests
 class ChatRequest(BaseModel):
     query: str
     user_name: str = "User"
     thread_id: str = "default"
 
 
+# Model defining API chat response format with memory history
 class ChatResponse(BaseModel):
     response: str
     history: List[dict]
     thread_id: str
 
 
+# Model defining responses for thread creation operations
 class ThreadResponse(BaseModel):
     thread_id: str
     message: str
 
 
-# Thread management
+# Stores active conversation thread metadata in memory
 active_threads: Dict[str, Dict] = {}
 
 
+# Handles user chat interaction and integrates LangGraph stateful memory
 @app.post("/chat", response_model=ChatResponse, tags=["Chat"])
 async def chat_endpoint(request: ChatRequest):
-    """
-    Handles a user chat message and maintains conversation history using LangGraph.
-    """
+    """Handles a user chat message and maintains conversation history using LangGraph."""
     user_input = request.query.strip()
     thread_id = request.thread_id
 
     if not user_input:
-        return ChatResponse(
-            response="Please provide a non-empty message.",
-            history=[],
-            thread_id=thread_id,
-        )
+        return ChatResponse(response="Please provide a non-empty message.", history=[], thread_id=thread_id)
 
     try:
-        # Prepare input for the graph
         input_data = {
             "user_input": user_input,
             "messages": [HumanMessage(content=user_input)],
@@ -395,11 +315,8 @@ async def chat_endpoint(request: ChatRequest):
         }
 
         config = {"configurable": {"thread_id": thread_id}}
-
-        # Invoke the graph
         result = graph.invoke(input_data, config)
 
-        # Get conversation history
         thread_config = {"configurable": {"thread_id": thread_id}}
         snapshot = checkpointer.get_tuple(thread_config)
 
@@ -411,9 +328,7 @@ async def chat_endpoint(request: ChatRequest):
                 elif isinstance(msg, AIMessage):
                     history_dicts.append({"role": "bot", "content": msg.content})
 
-        return ChatResponse(
-            response=result["response"], history=history_dicts, thread_id=thread_id
-        )
+        return ChatResponse(response=result["response"], history=history_dicts, thread_id=thread_id)
 
     except Exception as e:
         error_msg = f"Sorry, I encountered an error: {str(e)}"
@@ -421,28 +336,23 @@ async def chat_endpoint(request: ChatRequest):
         return ChatResponse(response=error_msg, history=[], thread_id=thread_id)
 
 
+# Creates a new persistent conversation thread identifier
 @app.post("/threads/create", response_model=ThreadResponse, tags=["Threads"])
 async def create_thread():
     """Create a new conversation thread"""
     thread_id = str(uuid.uuid4())
-    active_threads[thread_id] = {
-        "created_at": datetime.now().isoformat(),
-        "message_count": 0,
-    }
-    return ThreadResponse(
-        thread_id=thread_id, message="New conversation thread created"
-    )
+    active_threads[thread_id] = {"created_at": datetime.now().isoformat(), "message_count": 0}
+    return ThreadResponse(thread_id=thread_id, message="New conversation thread created")
 
 
+# Deletes a stored thread and clears memory from checkpoint storage
 @app.delete("/threads/{thread_id}", tags=["Threads"])
 async def delete_thread(thread_id: str):
     """Delete a conversation thread"""
     try:
-        # Clear from checkpointer
         config = {"configurable": {"thread_id": thread_id}}
         checkpointer.clear_tuple(config)
 
-        # Remove from active threads
         if thread_id in active_threads:
             del active_threads[thread_id]
 
@@ -451,12 +361,14 @@ async def delete_thread(thread_id: str):
         return {"status": "error", "message": str(e)}
 
 
+# Lists all active chat threads currently tracked by memory
 @app.get("/threads", tags=["Threads"])
 async def list_threads():
     """List all active conversation threads"""
     return {"threads": active_threads, "total_threads": len(active_threads)}
 
 
+# Returns a simple health record for monitoring service availability
 @app.get("/health", tags=["Health"])
 async def health_check():
     """Health check endpoint"""
@@ -468,6 +380,7 @@ async def health_check():
     }
 
 
+# Provides basic API meta-information for root access
 @app.get("/", tags=["Root"])
 async def root():
     """Root endpoint with API information"""
@@ -492,7 +405,7 @@ async def root():
     }
 
 
+# Server execution entry for local development
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8000)
