@@ -1,5 +1,5 @@
 
-# LangGraph Chat Agent API
+# Tool Assisted Agent
 
 A chat agent built with FastAPI and LangGraph. It supports academic assistance, emotional understanding, safety protocols, and conversation memory across threads.
 
